@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Three.js Learning Project</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+    <script type="x-shader/x-vertex" id="vertexshader">
+      uniform vec2 mousePosition;
+      uniform vec3 lightPosition;
+      uniform float time;
+      
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      varying float vIntensity;
+      varying float vDistanceToMouse;
+      
+      // Pseudo-random function
+      float random(vec3 scale, float seed) {
+        return fract(sin(dot(gl_Position.xyz + seed, scale)) * 43758.5453 + seed);
+      }
+      
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vPosition = position;
+        
+        // Get face index (each triangle is a face in our geometry)
+        float faceIndex = float(gl_VertexID / 3);
+        
+        // Calculate distance between vertex position and mouse in world space
+        float distanceToMouse = distance(position.xy, mousePosition);
+        vDistanceToMouse = distanceToMouse;
+        
+        // Explosive trigger based on mouse proximity
+        float explosionTrigger = smoothstep(0.7, 0.0, distanceToMouse);
+        
+        // Generate unique direction for each face based on its index
+        vec3 faceDirection = normalize(vec3(
+          sin(faceIndex * 0.5) + sin(time * 0.2 + faceIndex * 0.3),
+          cos(faceIndex * 0.4) + cos(time * 0.3 + faceIndex * 0.6),
+          sin(faceIndex * 0.7) + sin(time * 0.4 + faceIndex * 0.5)
+        ));
+        
+        // Make the direction more random and less uniform
+        faceDirection += normalize(normal) * 0.3;
+        
+        // Calculate displacement amount based on mouse proximity
+        float displacementAmount = explosionTrigger * 0.8;
+        
+        // Add some time variation
+        float timeScale = sin(time * 0.7 + faceIndex * 0.2) * 0.1 + 0.9;
+        displacementAmount *= timeScale;
+        
+        // Animate the faces flying apart
+        vec3 displacement = faceDirection * displacementAmount;
+        
+        // Apply displacement
+        vec3 newPosition = position + displacement;
+        
+        // Also add a slight rotation to each face
+        float rotationAngle = explosionTrigger * 0.5 * sin(time + faceIndex);
+        vec3 rotationAxis = normalize(cross(normal, vec3(1.0, 0.5, 0.2)));
+        
+        // Simple approximation of rotation (good enough for visual effect)
+        vec3 rotatedPosition = newPosition + cross(rotationAxis, newPosition) * rotationAngle;
+        
+        // Intensity for fragment shader coloring
+        vIntensity = explosionTrigger;
+        
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(rotatedPosition, 1.0);
+      }
+    </script>
+
+    <script type="x-shader/x-fragment" id="fragmentshader">
+      uniform vec3 lightPosition;
+      uniform float time;
+      
+      varying vec3 vNormal;
+      varying vec3 vPosition;
+      varying float vIntensity;
+      varying float vDistanceToMouse;
+      
+      void main() {
+        // Brighter color palette with hints of red
+        vec3 hotCore = vec3(0.9, 0.15, 0.15);    // Bright red core
+        vec3 midHeat = vec3(0.6, 0.15, 0.1);     // Bright reddish-brown
+        vec3 coolEdge = vec3(0.1, 0.05, 0.05);   // Dark red
+        
+        // Edge highlight color - brighter red
+        vec3 edgeGlow = vec3(0.5, 0.1, 0.1);
+        
+        // Determine color based on explosion intensity
+        vec3 baseColor;
+        if (vIntensity > 0.7) {
+          baseColor = mix(hotCore, midHeat, (vIntensity - 0.7) / 0.3);
+        } else {
+          baseColor = mix(coolEdge, midHeat, vIntensity / 0.7);
+        }
+        
+        // Create edge definition - more subtle now
+        float edge = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+        edge = pow(edge, 4.0) * 0.8;
+        
+        // Subtle flickering
+        float flicker = sin(time * 8.0 + vPosition.x * 15.0 + vPosition.y * 10.0) * 0.05 + 0.95;
+        
+        // Apply lighting
+        vec3 light = normalize(lightPosition);
+        float directional = max(dot(vNormal, light), 0.0);
+        float ambient = 0.3;  // Increased ambient light
+        
+        // Final color calculation
+        vec3 finalColor = baseColor * (directional + ambient) * flicker;
+        
+        // Add subtle edge glow
+        finalColor += edgeGlow * edge * vIntensity * 0.7;  // Increased edge glow intensity
+        
+        gl_FragColor = vec4(finalColor, 1.0);
+      }
+    </script>
+  <script type="module" src="main.js"></script>
+</body>
+</html> 
